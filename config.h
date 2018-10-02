@@ -5,8 +5,8 @@
  *
  * font: see http://freedesktop.org/software/fontconfig/fontconfig-user.html
  */
-static char *font = "Liberation Mono:pixelsize=12:antialias=true:autohint=true";
-static int borderpx = 2;
+static char *font = "curie:pixelsize=12";
+static int borderpx = 20;
 
 /*
  * What program is execed by st depends of these precedence rules:
@@ -25,7 +25,7 @@ char *vtiden = "\033[?6c";
 
 /* Kerning / character bounding-box multipliers */
 static float cwscale = 1.0;
-static float chscale = 1.0;
+static float chscale = 1.4;
 
 /*
  * word delimiter string
@@ -80,46 +80,52 @@ char *termname = "st-256color";
  *
  *	stty tabs
  */
-unsigned int tabspaces = 8;
+unsigned int tabspaces = 4;
 
 /* Terminal colors (16 first used in escape sequence) */
 static const char *colorname[] = {
-	/* 8 normal colors */
-	"black",
-	"red3",
-	"green3",
-	"yellow3",
-	"blue2",
-	"magenta3",
-	"cyan3",
-	"gray90",
 
-	/* 8 bright colors */
-	"gray50",
-	"red",
-	"green",
-	"yellow",
-	"#5c5cff",
-	"magenta",
-	"cyan",
-	"white",
+  /* 8 normal colors */
+  [0] = "#555555", /* black   */
+  [1] = "#9c3528", /* red     */
+  [2] = "#61bc3b", /* green   */
+  [3] = "#f3b43a", /* yellow  */
+  [4] = "#0d68a8", /* blue    */
+  [5] = "#744560", /* magenta */
+  [6] = "#288e9c", /* cyan    */
+  [7] = "#a2a2a2", /* white   */
 
-	[255] = 0,
+  /* 8 bright colors */
+  [8]  = "#888888", /* black   */
+  [9]  = "#d64937", /* red     */
+  [10] = "#86df5d", /* green   */
+  [11] = "#fdd75a", /* yellow  */
+  [12] = "#0f75bd", /* blue    */
+  [13] = "#9e5e83", /* magenta */
+  [14] = "#37c3d6", /* cyan    */
+  [15] = "#f9f9f9", /* white   */
 
-	/* more colors can be added after 255 to use with DefaultXX */
-	"#cccccc",
-	"#555555",
+  /* special colors */
+  [256] = "#282828", /* background */
+  [257] = "#a2a2a2", /* foreground */
 };
-
 
 /*
  * Default colors (colorname index)
- * foreground, background, cursor, reverse cursor
+ * foreground, background, cursor
  */
-unsigned int defaultfg = 7;
-unsigned int defaultbg = 0;
-static unsigned int defaultcs = 256;
+unsigned int defaultfg = 257;
+unsigned int defaultbg = 256;
+static unsigned int defaultcs = 257;
 static unsigned int defaultrcs = 257;
+
+/*
+ * Colors used, when the specific fg == defaultfg. So in reverse mode this
+ * will reverse too. Another logic would only make the simple feature too
+ * complex.
+ */
+static unsigned int defaultitalic = 7;
+static unsigned int defaultunderline = 7;
 
 /*
  * Default shape of cursor
@@ -156,14 +162,14 @@ static unsigned int defaultattr = 11;
  */
 static MouseShortcut mshortcuts[] = {
 	/* button               mask            string */
-	{ Button4,              XK_NO_MOD,      "\031" },
-	{ Button5,              XK_NO_MOD,      "\005" },
+	/* { Button4,              XK_NO_MOD,      "\031" }, */
+	/* { Button5,              XK_NO_MOD,      "\005" }, */
 };
 
 MouseKey mkeys[] = {
 	/* button               mask            function        argument */
-	{ Button4,              ShiftMask,      kscrollup,      {.i =  1} },
-	{ Button5,              ShiftMask,      kscrolldown,    {.i =  1} },
+	{ Button4,              XK_NO_MOD,      kscrollup,      {.i =  4} },
+	{ Button5,              XK_NO_MOD,      kscrolldown,    {.i =  4} },
 };
 
 /* Internal keyboard shortcuts. */
@@ -183,8 +189,8 @@ static Shortcut shortcuts[] = {
 	{ TERMMOD,              XK_V,           clippaste,      {.i =  0} },
 	{ TERMMOD,              XK_Y,           selpaste,       {.i =  0} },
 	{ TERMMOD,              XK_Num_Lock,    numlock,        {.i =  0} },
-	{ ShiftMask,            XK_Page_Up,     kscrollup,      {.i = -1} },
-	{ ShiftMask,            XK_Page_Down,   kscrolldown,    {.i = -1} },
+	{ XK_NO_MOD,            XK_Page_Up,     kscrollup,      {.i = -1} },
+	{ XK_NO_MOD,            XK_Page_Down,   kscrolldown,    {.i = -1} },
 };
 
 /*
