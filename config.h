@@ -5,7 +5,9 @@
  *
  * font: see http://freedesktop.org/software/fontconfig/fontconfig-user.html
  */
-static char *font = "Input-11";
+
+// https://people.mpi-inf.mpg.de/~uwe/misc/uw-ttyp0/
+static char *font = "UW Ttyp0-13";
 static int borderpx = 20;
 
 /*
