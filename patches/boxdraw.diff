@@ -1,0 +1,150 @@
+diff --git a/Makefile b/Makefile
+index 0b3cecd..8d3af33 100644
+--- a/Makefile
++++ b/Makefile
+@@ -4,7 +4,7 @@
+ 
+ include config.mk
+ 
+-SRC = st.c x.c
++SRC = st.c x.c boxdraw.c
+ OBJ = $(SRC:.c=.o)
+ 
+ all: options st
+@@ -23,6 +23,7 @@ config.h:
+ 
+ st.o: config.h st.h win.h
+ x.o: arg.h st.h win.h
++boxdraw.o: config.h st.h boxdraw_data.h
+ 
+ $(OBJ): config.h config.mk
+ 
+diff --git a/config.def.h b/config.def.h
+index f770d2e..1ac618c 100644
+--- a/config.def.h
++++ b/config.def.h
+@@ -56,6 +56,14 @@ static unsigned int blinktimeout = 800;
+  */
+ static unsigned int cursorthickness = 2;
+ 
++/*
++ * 1: custom-draw (without using the font) most of the lines/blocks characters
++ *    for gapless alignment between cells. This includes all the codepoints at
++ *    U+2500 - U+259F except dashes, diagonals and shades.
++ * 0: disable (render all glyphs normally from the font).
++ */
++const int boxdraw = 0;
++
+ /*
+  * bell volume. It must be a value between -100 and 100. Use 0 for disabling
+  * it
+diff --git a/config.h b/config.h
+index 2a4a903..5791702 100644
+--- a/config.h
++++ b/config.h
+@@ -58,6 +58,14 @@ static unsigned int blinktimeout = 800;
+  */
+ static unsigned int cursorthickness = 2;
+ 
++/*
++ * 1: custom-draw (without using the font) most of the lines/blocks characters
++ *    for gapless alignment between cells. This includes all the codepoints at
++ *    U+2500 - U+259F except dashes, diagonals and shades.
++ * 0: disable (render all glyphs normally from the font).
++ */
++const int boxdraw = 1;
++
+ /*
+  * bell volume. It must be a value between -100 and 100. Use 0 for disabling
+  * it
+diff --git a/st.c b/st.c
+index 3607ff1..b1a955c 100644
+--- a/st.c
++++ b/st.c
+@@ -1285,6 +1285,9 @@ tsetchar(Rune u, Glyph *attr, int x, int y)
+ 	term.dirty[y] = 1;
+ 	term.line[y][x] = *attr;
+ 	term.line[y][x].u = u;
++
++	if (boxdraw && isboxdraw(&term.line[y][x]))
++		term.line[y][x].mode |= ATTR_BOXDRAW;
+ }
+ 
+ void
+diff --git a/st.h b/st.h
+index d601c61..faf5252 100644
+--- a/st.h
++++ b/st.h
+@@ -38,6 +38,7 @@ enum glyph_attribute {
+ 	ATTR_WRAP       = 1 << 8,
+ 	ATTR_WIDE       = 1 << 9,
+ 	ATTR_WDUMMY     = 1 << 10,
++	ATTR_BOXDRAW    = 1 << 11,
+ 	ATTR_BOLD_FAINT = ATTR_BOLD | ATTR_FAINT,
+ };
+ 
+@@ -122,6 +123,13 @@ void *xmalloc(size_t);
+ void *xrealloc(void *, size_t);
+ char *xstrdup(char *);
+ 
++int isboxdraw(const Glyph *);
++ushort boxdrawindex(const Glyph *);
++#ifdef XFT_VERSION
++/* only exposed to x.c, otherwise we'll need Xft.h for the types */
++void drawboxes(XftDraw *, int, int, int, int, XftColor *, const XftGlyphFontSpec *, int);
++#endif
++
+ void kscrolldown(const Arg *);
+ void kscrollup(const Arg *);
+ 
+@@ -135,4 +143,5 @@ extern char *termname;
+ extern unsigned int tabspaces;
+ extern unsigned int defaultfg;
+ extern unsigned int defaultbg;
++extern const int boxdraw;
+ extern MouseKey mkeys[];
+diff --git a/x.c b/x.c
+index ed5e88e..64e0a7d 100644
+--- a/x.c
++++ b/x.c
+@@ -1179,8 +1179,14 @@ xmakeglyphfontspecs(XftGlyphFontSpec *specs, const Glyph *glyphs, int len, int x
+ 			yp = winy + font->ascent + win.cyo;
+ 		}
+ 
+-		/* Lookup character index with default font. */
+-		glyphidx = XftCharIndex(xw.dpy, font->match, rune);
++		if (mode & ATTR_BOXDRAW) {
++			/* minor shoehorning: boxdraw uses only this ushort */
++			glyphidx = boxdrawindex(&glyphs[i]);
++		} else {
++			/* Lookup character index with default font. */
++			glyphidx = XftCharIndex(xw.dpy, font->match, rune);
++		}
++
+ 		if (glyphidx) {
+ 			specs[numspecs].font = font->match;
+ 			specs[numspecs].glyph = glyphidx;
+@@ -1387,8 +1393,12 @@ xdrawglyphfontspecs(const XftGlyphFontSpec *specs, Glyph base, int len, int x, i
+ 	r.width = width;
+ 	XftDrawSetClipRectangles(xw.draw, winx, winy, &r, 1);
+ 
+-	/* Render the glyphs. */
+-	XftDrawGlyphFontSpec(xw.draw, fg, specs, len);
++	if (base.mode & ATTR_BOXDRAW) {
++		drawboxes(xw.draw, winx, winy, width / len, win.ch, fg, specs, len);
++	} else {
++		/* Render the glyphs. */
++		XftDrawGlyphFontSpec(xw.draw, fg, specs, len);
++	}
+ 
+ 	/* Render underline and strikethrough. */
+ 	if (base.mode & ATTR_UNDERLINE) {
+@@ -1431,7 +1441,7 @@ xdrawcursor(int cx, int cy, Glyph g, int ox, int oy, Glyph og)
+ 	/*
+ 	 * Select the right color for the right mode.
+ 	 */
+-	g.mode &= ATTR_BOLD|ATTR_ITALIC|ATTR_UNDERLINE|ATTR_STRUCK|ATTR_WIDE;
++	g.mode &= ATTR_BOLD|ATTR_ITALIC|ATTR_UNDERLINE|ATTR_STRUCK|ATTR_WIDE|ATTR_BOXDRAW;
+ 
+ 	if (IS_SET(MODE_REVERSE)) {
+ 		g.mode |= ATTR_REVERSE;
